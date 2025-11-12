@@ -188,20 +188,71 @@ class LL1Table:
 
     def analyze(self, input_string: str, start: str) -> ParseTree:
         """
-        Method to analyze a string using the LL(1) table.
+        Analyze a string using the LL(1) table and build a parse tree.
 
         Args:
             input_string: string to analyze.
             start: initial symbol.
 
         Returns:
-            ParseTree object with either the parse tree (if the elective exercise is solved)
-            or an empty tree (if the elective exercise is not considered).
+            ParseTree object representing the parse tree.
 
         Raises:
             SyntaxError: if the input string is not syntactically correct.
         """
+        stack: List[str] = ['$', start]  # symbol stack
+        input_list: List[str] = list(input_string)  # input with end-marker
+        tree_stack: List[ParseTree] = [ParseTree('$'), ParseTree(start)]  # parse tree nodes
 
+        i = 0  # input pointer
+        while i < len(input_list):
+            if not stack:
+                raise SyntaxError("Stack emptied before input fully consumed")
+
+            stackTop = stack[-1]          # peek top of stack
+            current_tree = tree_stack.pop()
+            currentSymbol = input_list[i]
+
+            # Terminal or end-marker
+            if stackTop in self.terminals or stackTop == '$':
+                if stackTop == currentSymbol:
+                    stack.pop()   # match terminal
+                    i += 1        # consume input symbol
+                else:
+                    raise SyntaxError(f"Unexpected symbol '{currentSymbol}', expected '{stackTop}'")
+
+            # Non-terminal
+            elif stackTop in self.non_terminals:
+                production = self.cells.get(stackTop, {}).get(currentSymbol)
+                if production is None:
+                    raise SyntaxError(f"No rule for '{stackTop}' on input '{currentSymbol}'")
+
+                stack.pop()  # pop non-terminal
+
+                if production == '':  # epsilon production
+                    current_tree.children = []
+                else:
+                    children: List[ParseTree] = []
+                    # push RHS symbols in reverse order
+                    for symbol in reversed(production):
+                        stack.append(symbol)
+                        child_tree = ParseTree(symbol)
+                        tree_stack.append(child_tree)
+                        children.insert(0, child_tree)  # maintain left-to-right order
+                    current_tree.children = children
+
+                tree_stack.append(current_tree)  # push updated tree node
+
+            else:
+                raise SyntaxError(f"Invalid symbol '{stackTop}' on stack")
+
+        # After processing, stack should only contain end-marker
+        if stack != []:
+            raise SyntaxError("Input not fully consumed")
+
+        # Return root of parse tree
+        return tree_stack[0] if tree_stack else ParseTree(start)             
+                
 	# TO-DO: Complete this method for exercise 2...
     
     
