@@ -64,6 +64,8 @@ class Grammar:
         self.non_terminals = non_terminals
         self.productions = productions
         self.axiom = axiom
+        self.first_cache: Dict[str, Set[str]] = {}
+        self.follow_cache: Dict[str, Set[str]] = {nt: set() for nt in self.non_terminals}
 
     def __repr__(self) -> str:
         return (
@@ -75,12 +77,17 @@ class Grammar:
         )
 
 
+
     def compute_first(self, sentence: List[str]) -> AbstractSet[str]:
         """
-        Compute FIRST set for a sequence of grammar symbols (sentence),
-        using a local cache for non-terminals.
+        Method to compute the FIRST set of a string.
+
+        Args:
+            sentence: list of symbols whose FIRST set is to be computed.
+
+        Returns:
+            Set of terminals and/or ε representing FIRST(sentence)
         """
-        first_cache: dict[str, Set[str]] = {}
 
         def _first(seq: List[str]) -> Set[str]:
             first_set: Set[str] = set()
@@ -94,15 +101,15 @@ class Grammar:
                     first_set.add(symbol)
                     break  # terminal stops the sequence
                 elif symbol in self.non_terminals:
-                    # compute FIRST of non-terminal using local cache
-                    if symbol not in first_cache:
-                        first_cache[symbol] = set()
+                    # use self.first_cache instead of local cache
+                    if symbol not in self.first_cache:
+                        self.first_cache[symbol] = set()
                         for production in self.productions[symbol]:
-                            first_cache[symbol].update(_first(production))
+                            self.first_cache[symbol].update(_first(production))
 
-                    first_set.update(first_cache[symbol] - {''})
+                    first_set.update(self.first_cache[symbol] - {''})
 
-                    if '' not in first_cache[symbol]:
+                    if '' not in self.first_cache[symbol]:
                         break  # stop if symbol is not nullable
                 else:
                     raise ValueError(f"Symbol {symbol} is neither terminal nor non-terminal.")
@@ -118,16 +125,60 @@ class Grammar:
 
 
     def compute_follow(self, symbol: str) -> AbstractSet[str]:
-        """
-        Method to compute the follow set of a non-terminal symbol.
+        # Ensure FIRST sets are computed
+        for nt in self.non_terminals:
+            self.compute_first([nt])
 
-        Args:
-            symbol: non-terminal whose follow set is to be computed.
+        if symbol not in self.non_terminals:
+            raise ValueError(f"{symbol} is not a non-terminal")
 
-        Returns:
-            Follow set of symbol.
-        """
+        # Initialize FOLLOW cache if it doesn't exist
+        self.follow_cache = {nt: set() for nt in self.non_terminals}
+        self.follow_cache[self.axiom].add('$')  # Add $ to start symbol
 
+        changed = True
+        while changed:
+            changed = False
+            
+            # Iterate over all productions
+            for head, productions in self.productions.items():
+                for prod in productions:  
+                    for i, A in enumerate(prod):
+                        if A not in self.non_terminals:
+                            continue
+                        
+                        # ω are the symbols after A
+                        omega = prod[i + 1:]
+                        
+                        # Compute FIRST*(ω)
+                        first_omega = set()
+                        if omega:
+                            for sym in omega:
+                                if sym in self.non_terminals:
+                                    first_omega |= self.first_cache[sym] - {''}
+                                    if '' not in self.first_cache[sym]:
+                                        break
+                                else:
+                                    first_omega.add(sym)
+                                    break  
+                            else:
+                                first_omega.add('')
+                        else:
+                            first_omega.add('')
+                        
+                        # FOLLOW(A) += FIRST*(ω) - {ε}
+                        to_add = first_omega - {''}
+                        if not to_add.issubset(self.follow_cache[A]):
+                            self.follow_cache[A] |= to_add
+                            changed = True
+                        
+                        # If ε ∈ FIRST*(ω), FOLLOW(A) += FOLLOW(head)
+                        if '' in first_omega:
+                            if not self.follow_cache[head].issubset(self.follow_cache[A]):
+                                self.follow_cache[A] |= self.follow_cache[head]
+                                changed = True
+
+        return self.follow_cache[symbol]
 	# TO-DO: Complete this method for exercise 4...
 
 
