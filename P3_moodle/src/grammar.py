@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
-from typing import AbstractSet, Collection, MutableSet, Optional, Dict, List, Optional
+from typing import Set, AbstractSet, Collection, MutableSet, Optional, Dict, List, Optional
 
 class RepeatedCellError(Exception):
     """Exception for repeated cells in LL(1) tables."""
@@ -75,17 +75,45 @@ class Grammar:
         )
 
 
-    def compute_first(self, sentence: str) -> AbstractSet[str]:
+    def compute_first(self, sentence: List[str]) -> AbstractSet[str]:
         """
-        Method to compute the first set of a string.
-
-        Args:
-            str: string whose first set is to be computed.
-
-        Returns:
-            First set of str.
+        Compute FIRST set for a sequence of grammar symbols (sentence),
+        using a local cache for non-terminals.
         """
+        first_cache: dict[str, Set[str]] = {}
 
+        def _first(seq: List[str]) -> Set[str]:
+            first_set: Set[str] = set()
+
+            if not seq:
+                first_set.add('')
+                return first_set
+
+            for i, symbol in enumerate(seq):
+                if symbol in self.terminals:
+                    first_set.add(symbol)
+                    break  # terminal stops the sequence
+                elif symbol in self.non_terminals:
+                    # compute FIRST of non-terminal using local cache
+                    if symbol not in first_cache:
+                        first_cache[symbol] = set()
+                        for production in self.productions[symbol]:
+                            first_cache[symbol].update(_first(production))
+
+                    first_set.update(first_cache[symbol] - {''})
+
+                    if '' not in first_cache[symbol]:
+                        break  # stop if symbol is not nullable
+                else:
+                    raise ValueError(f"Symbol {symbol} is neither terminal nor non-terminal.")
+
+                # if last symbol is nullable, add ε
+                if i == len(seq) - 1:
+                    first_set.add('')
+
+            return first_set
+
+        return _first(sentence)
 	# TO-DO: Complete this method for exercise 3...
 
 
