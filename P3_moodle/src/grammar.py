@@ -183,14 +183,43 @@ class Grammar:
 
 
     def get_ll1_table(self) -> Optional[LL1Table]:
-        """
-        Method to compute the LL(1) table.
+        # Ensure FOLLOW sets are computed
+        for nt in self.non_terminals:
+            self.compute_follow(nt)
 
-        Returns:
-            LL(1) table for the grammar, or None if the grammar is not LL(1).
-        """
+        # Terminals = all symbols appearing in productions minus non-terminals
+        terminals = set()
+        for prods in self.productions.values():
+            for prod in prods:
+                terminals.update(prod)
+        terminals -= self.non_terminals
+        terminals.add('$')  # add end-of-input marker
 
-	# TO-DO: Complete this method for exercise 5...
+        table = LL1Table(self.non_terminals, terminals)
+
+        for head, prods in self.productions.items():
+            for prod in prods:
+                # Compute FIRST*(prod)
+                first_alpha = self.compute_first(prod)  # returns set including '' if nullable
+
+                # For each terminal in FIRST*(prod) excluding ε
+                for terminal in first_alpha - {''}:
+                    try:
+                        table.add_cell(head, terminal, ''.join(prod))
+                    except RepeatedCellError:
+                        # Conflict: grammar is not LL(1)
+                        return None
+
+                # If ε ∈ FIRST*(prod), add production to FOLLOW(head)
+                if '' in first_alpha:
+                    for terminal in self.follow_cache[head]:
+                        try:
+                            table.add_cell(head, terminal, ''.join(prod))
+                        except RepeatedCellError:
+                            # Conflict: grammar is not LL(1)
+                            return None
+
+        return table
 
 
     def is_ll1(self) -> bool:
